@@ -8,13 +8,13 @@ import glob
 class ClientBox:
 	def __init__(self, **kwargs):
 		print("Initialize client...")
-		self.clientSocket 		= socket(AF_INET, SOCK_STREAM)
+		self.clientSocket		= socket(AF_INET, SOCK_STREAM)
 		self.host 				= gethostname() #"localhost"
 		self.port 				= 1237
 		self.bufSize			= 1024
 		self.address			= (self.host, self.port)
 		
-		print("Changing directory to: {}".format(kwargs.get('targetdir')))
+		print("Changing directory to: {}".format(sys.argv[1]))
 		self.targetDir			= sys.argv[1]
 		os.chdir(self.targetDir)
 

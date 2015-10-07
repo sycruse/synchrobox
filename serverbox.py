@@ -14,7 +14,7 @@ class ServerBox:
 		self.bufSize 		= 1024
 		self.address		= (self.host, self.port)
 
-		print("Changing directory to: {}".format(kwargs.get('targetdir')))
+		print("Changing directory to: {}".format(sys.argv[1]))
 		self.targetDir		= sys.argv[1]
 		os.chdir(self.targetDir)
 
