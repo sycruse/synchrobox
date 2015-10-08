@@ -16,18 +16,27 @@ class ServerBox:
 		self.bufSize 		= 1024
 		self.address		= (self.host, self.port)
 
-		print("Changing directory to: {}".format(sys.argv[1]))
 		self.targetDir		= sys.argv[1]
 		os.chdir(self.targetDir)
+		print("Change directory to: {}".format(sys.argv[1]))
 
-		self.constructFileList()
 		self.createServer()
-
 		print("Server ready!")
+		
 		self.listenForConnection()
-		self.handleFileListObject()
-		#self.handleConnection()
+		self.mainProcedure()
 
+	# =============================
+	# Main procedure to be repeated
+	# =============================
+	def mainProcedure(self):
+		self.constructFileList()
+		self.handleFileListObject()
+		self.exchangingFiles()
+
+	# ==================================
+	# Connect and Listen function family
+	# ==================================
 	def createServer(self):
 		self.serverSocket.bind(self.address)
 		print("Bind socket and start to listen on {},{}".format(self.host, self.port))
@@ -36,6 +45,9 @@ class ServerBox:
 		print("Server is listening....")
 		self.serverSocket.listen(5)
 
+	# ===============================
+	# Synchronization function family
+	# ===============================
 	def handleFileListObject(self):
 		(connection,clientAddress) = self.serverSocket.accept()
 		print('Connected with: {}'.format(clientAddress))
@@ -72,10 +84,11 @@ class ServerBox:
 				requestFileList.append(clientItemName)
 
 		# list of file (from server to client) and (from client to server) is done
-		print("Will send to client: {}".format(deliveryFileList))
-		print("Request for server from client: {}".format(requestFileList))
+		print("Server will send to client: {}".format(deliveryFileList))
+		print("Client will send to server: {}".format(requestFileList))
 
-		jsonEncodedData = json.dumps(requestFileList)
+		sendData = (requestFileList, len(deliveryFileList))
+		jsonEncodedData = json.dumps(sendData)
 		asciiEncodedData = jsonEncodedData.encode('ascii')
 		connection.send(asciiEncodedData)
 
@@ -84,10 +97,66 @@ class ServerBox:
 		self.clientConnection = connection
 
 	def exchangingFiles(self):
-		print("Prepare to send file from server to client..")
-		self.clientConnection.send()
-		# Hereeeeeeee
+		print("Synchronization: sending server file to client..")
+		for dataName in self.deliveryFileList:
+			# Send data header
+			dataSize = os.path.getsize(dataName)
+			dataHeader = (dataName, dataSize)
+			jsonDataHeader = json.dumps(dataHeader)
+			self.clientConnection.send(jsonDataHeader.encode('ascii'))
+			print("Sending file: [{}] with size: [{}]".format(dataName, dataSize))
 
+			# Send real data
+			count = 1
+			fileObject = open(dataName, "rb")
+			data = fileObject.read(self.bufSize)
+			print("Sending the file...")
+			while (data):
+				if(self.clientConnection.send(data)):
+					if(count % 1000 == 0):
+						print(".")
+					count += 1
+					data = fileObject.read(self.bufSize)
+			print("Sending end of file signal")
+			self.clientConnection.send(b'eof')
+			print("Finish sending file!")
+
+		print("Synchronization: receiving files from client..")
+		incomingFileNumber = len(self.requestFileList)
+		for index in range(0, incomingFileNumber):
+			# Get data header
+			jsonDataHeader = self.clientConnection.recv(self.bufSize).decode('ascii')
+			(dataName,dataSize) = json.loads(jsonDataHeader)
+			print("Receiving file: [{}] with size: [{}]".format(dataName, dataSize))
+
+			# Get real data
+			fileObject = open(dataName, 'wb')
+			data = self.clientConnection.recv(self.bufSize)
+			print("Downloading file...")
+			try:
+				while(data):
+					fileObject.write(data)
+					self.clientConnection.settimeout(2)
+					data = self.clientConnection.recv(self.bufSize)
+					if(data == b'eof'):
+						print("End of file catched!")
+						break
+			except timeout:
+				fileObject.close()
+			print("Download finished!")
+			fileObject.close()
+
+	def constructFileList(self):
+		self.fileList = []
+		print("Listing all file in directory..")
+		for fileName in glob.glob("*"):
+			inputItem = (fileName , os.path.getmtime(fileName))
+			self.fileList.append(inputItem)
+		print("File list construction complete!")
+
+	# ========================
+	# Additional unused family
+	# ========================
 	def sendFileList(self):
 		encodedData = json.dumps(self.fileList)
 		self.serverSocket.sendto(encodedData.encode('ascii'),self.address)
@@ -112,14 +181,6 @@ class ServerBox:
 			print("Download finished!")
 			self.fileObject.close()
 		self.connection.close()
-
-	def constructFileList(self):
-		self.fileList = []
-		print("Listing all file in directory..")
-		for fileName in glob.glob("*"):
-			inputItem = (fileName , os.path.getmtime(fileName))
-			self.fileList.append(inputItem)
-		#print(self.fileList)
 
 	def updateFileList(self):
 		self.constructFileList()
