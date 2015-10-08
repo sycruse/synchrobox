@@ -4,6 +4,7 @@ from socket import *
 import sys
 import os
 import glob
+import json
 
 class ClientBox:
 	def __init__(self, **kwargs):
@@ -20,13 +21,41 @@ class ClientBox:
 		self.constructFileList()
 		print("Finish initialize client!")
 
-		#self.connectToServer()
-		self.sendAllFile()
+		self.connectToServer()
+		self.sendFileList()
+		self.receiveRequestList()
 
+		#self.sendAllFile()
+
+	def listenForConnection(self):
+		print("Client is listening....")
+		self.clientSocket.listen(5)
+
+	def sendFileList(self):
+		print("Prepare to send encoded data of client file list..")
+		encodedData = json.dumps(self.fileList)
+		self.clientSocket.sendto(encodedData.encode('ascii'),self.address)
+		print("Client file list sent!")
+		print(self.address)
+
+	def receiveRequestList(self):
+		print("Wait to receive data from server: request for client file list..")
+		#self.listenForConnection()
+		#(connection,address) = self.clientSocket.accept()
+		data = self.clientSocket.recv(self.bufSize)
+		decodedData = json.loads(data.decode('ascii'))
+		print("Request file to send to server: {}".format(decodedData))
+
+	# ======================================
+	# Connect and Disconnect function family
+	# ======================================
 	def connectToServer(self):
 		self.clientSocket		= socket(AF_INET, SOCK_STREAM)
 		print("Make connection to {},{}".format(self.host, self.port))
 		self.clientSocket.connect((self.host, self.port))
+
+	def disconnectFromServer(self):
+		self.clientSocket.close()
 
 	def sendAllFile(self):
 		print("Prepare to send file...")
@@ -35,8 +64,9 @@ class ClientBox:
 			self.fileName		= file
 			self.clientSocket.sendto(self.fileName.encode('ascii'), self.address)
 			self.fileObject		= open(self.fileName, "rb")
-			self.data 			= self.fileObject.read(self.bufSize)
 			count				= 1
+
+			self.data 			= self.fileObject.read(self.bufSize)
 			print("Sending the file...", end="")
 			while (self.data):
 				if(self.clientSocket.sendto(self.data,self.address)):

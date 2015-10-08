@@ -5,6 +5,7 @@ import sys
 import os
 import glob
 import threading
+import json
 
 class ServerBox:
 	def __init__(self, **kwargs):
@@ -19,17 +20,79 @@ class ServerBox:
 		self.targetDir		= sys.argv[1]
 		os.chdir(self.targetDir)
 
+		self.constructFileList()
 		self.createServer()
 
-		print("Server ready and listening...")
-		self.listen()
+		print("Server ready!")
+		self.listenForConnection()
+		self.handleFileListObject()
+		#self.handleConnection()
 
 	def createServer(self):
-		print("Binding socket and start to listen..")
 		self.serverSocket.bind(self.address)
+		print("Bind socket and start to listen on {},{}".format(self.host, self.port))
+
+	def listenForConnection(self):
+		print("Server is listening....")
 		self.serverSocket.listen(5)
 
-	def listen(self):
+	def handleFileListObject(self):
+		(connection,clientAddress) = self.serverSocket.accept()
+		print('Connected with: {}'.format(clientAddress))
+		(data,addressRecv) = connection.recvfrom(self.bufSize)
+		decodedFileList = json.loads(data.decode('ascii'))
+		#print(decodedFileList)
+
+		# Build list that will be sent by server to client
+		deliveryFileList = []
+		for serverItem in self.fileList:
+			(serverItemName, serverItemModtime) = serverItem
+			serverItemFound = False
+			for clientItem in decodedFileList:
+				(clientItemName, clientItemModtime) = clientItem
+				if(clientItemName == serverItemName):
+					if(serverItemModtime > clientItemModtime):
+						deliveryFileList.append(serverItemName)
+						serverItemFound = True
+			if(serverItemFound == False):
+				deliveryFileList.append(serverItemName)
+
+		# Build list that will be sent by client to server
+		requestFileList = []
+		for clientItem in decodedFileList:
+			(clientItemName, clientItemModtime) = clientItem
+			clientItemFound = False
+			for serverItem in self.fileList:
+				(serverItemName, serverItemModtime) = serverItem
+				if(serverItemName == clientItemName):
+					if(clientItemModtime > serverItemModtime):
+						requestFileList.append(clientItemName)
+						clientItemFound = True
+			if(clientItemFound == False):
+				requestFileList.append(clientItemName)
+
+		# list of file (from server to client) and (from client to server) is done
+		print("Will send to client: {}".format(deliveryFileList))
+		print("Request for server from client: {}".format(requestFileList))
+
+		jsonEncodedData = json.dumps(requestFileList)
+		asciiEncodedData = jsonEncodedData.encode('ascii')
+		connection.send(asciiEncodedData)
+
+		self.deliveryFileList = deliveryFileList
+		self.requestFileList = requestFileList
+		self.clientConnection = connection
+
+	def exchangingFiles(self):
+		print("Prepare to send file from server to client..")
+		self.clientConnection.send()
+		# Hereeeeeeee
+
+	def sendFileList(self):
+		encodedData = json.dumps(self.fileList)
+		self.serverSocket.sendto(encodedData.encode('ascii'),self.address)
+
+	def handleConnection(self):
 		while True:
 			self.connection,self.address = self.serverSocket.accept()
 			print('Connected with: {}'.format(self.address))
@@ -48,7 +111,6 @@ class ServerBox:
 				self.connection.close()
 			print("Download finished!")
 			self.fileObject.close()
-		threading.Thread.__init__(self)
 		self.connection.close()
 
 	def constructFileList(self):
