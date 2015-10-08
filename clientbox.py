@@ -8,7 +8,6 @@ import glob
 class ClientBox:
 	def __init__(self, **kwargs):
 		print("Initialize client...")
-		self.clientSocket		= socket(AF_INET, SOCK_STREAM)
 		self.host 				= gethostname() #"localhost"
 		self.port 				= 1237
 		self.bufSize			= 1024
@@ -18,7 +17,7 @@ class ClientBox:
 		self.targetDir			= sys.argv[1]
 		os.chdir(self.targetDir)
 
-		self.connectToServer()
+		#self.connectToServer()
 
 		print("Finish initialize client!")
 		#self.sendFile('data.png')
@@ -26,26 +25,30 @@ class ClientBox:
 		self.sendAllFile()
 
 	def connectToServer(self):
+		self.clientSocket		= socket(AF_INET, SOCK_STREAM)
 		print("Make connection to {},{}".format(self.host, self.port))
 		self.clientSocket.connect((self.host, self.port))
 
 	def sendAllFile(self):
 		print("Prepare to send file...")
 		for file in glob.glob("*"):
+			self.connectToServer()
 			self.fileName		= file
 			self.clientSocket.sendto(self.fileName.encode('ascii'), self.address)
 			self.fileObject		= open(self.fileName, "rb")
 			self.data 			= self.fileObject.read(self.bufSize)
 			count				= 1
+			print("Sending the file...", end="")
 			while (self.data):
 				if(self.clientSocket.sendto(self.data,self.address)):
-					#print("[{}] Sending the file...".format(count))
+					if(count % 1000 == 0):
+						print(".")
 					count += 1
 					self.data = self.fileObject.read(self.bufSize)
-			print("Finish sending file!")
+			print("\nFinish sending file!")
 
-		print("Closing the client socket...")
-		self.clientSocket.close()
+			print("Closing the client socket...")
+			self.clientSocket.close()
 
 	def sendFile(self, inputFileName):
 		print("Prepare to send file...")
