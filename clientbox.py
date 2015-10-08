@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+# Author: Tim 9 Jaringan Komputer C, Fasilkom Universitas Indonesia
+# Dikerjakan sebagai Tugas Kelompok 3
 
 from socket import *
 import sys
@@ -18,15 +20,19 @@ class ClientBox:
 		self.targetDir			= sys.argv[1]
 		os.chdir(self.targetDir)
 
-		self.constructFileList()
 		print("Finish initialize client!")
-
 		self.connectToServer()
+
+		self.mainProcedure()
+
+	# =============================
+	# Main procedure to be repeated
+	# =============================
+	def mainProcedure(self):
+		self.constructFileList()
 		self.sendFileList()
 		self.receiveRequestList()
 		self.exchangingFiles()
-
-		#self.sendAllFile()
 
 	# ======================
 	# Synchronization family
@@ -47,53 +53,62 @@ class ClientBox:
 
 	def exchangingFiles(self):
 		print("Synchronization: receiving files from server..")
-		for index in range(0, self.incomingFileNumber):
-			# Get data header
-			jsonDataHeader = self.clientSocket.recv(self.bufSize).decode('ascii')
-			(dataName,dataSize) = json.loads(jsonDataHeader)
-			print("Receiving file: [{}] with size: [{}]".format(dataName, dataSize))
+		if(self.incomingFileNumber != 0):
+			for index in range(0, self.incomingFileNumber):
+				# Get data header
+				jsonDataHeader = self.clientSocket.recv(self.bufSize).decode('ascii')
+				(dataName,dataSize) = json.loads(jsonDataHeader)
+				print("Receiving file: [{}] with size: [{}]".format(dataName, dataSize))
 
-			# Get real data
-			fileObject = open(dataName, 'wb')
-			data = self.clientSocket.recv(self.bufSize)
-			#calcDataSize += len(data)
-			print("Downloading file...")
-			try:
-				while(data):
-					fileObject.write(data)
-					self.clientSocket.settimeout(2)
-					data = self.clientSocket.recv(self.bufSize)
-					if(data == b'eof'):
-						print("End of file catched!")
-						break
-			except timeout:
+				# Get real data
+				fileObject = open(dataName, 'wb')
+				data = self.clientSocket.recv(self.bufSize)
+				#calcDataSize += len(data)
+				print("Downloading file...")
+				try:
+					while(data):
+						fileObject.write(data)
+						self.clientSocket.settimeout(2)
+						data = self.clientSocket.recv(self.bufSize)
+						if(data == b'eof'):
+							print("End of file catched!")
+							break
+				except timeout:
+					fileObject.close()
+				print("Download finished!")
 				fileObject.close()
-			print("Download finished!")
-			fileObject.close()
+		else:
+			print("Synchronization: nothing to receive from server!")
 
 		print("Synchronization: sending files to server..")
-		for dataName in self.requestFileList:
-			# Send data header
-			dataSize = os.path.getsize(dataName)
-			dataHeader = (dataName, dataSize)
-			jsonDataHeader = json.dumps(dataHeader)
-			self.clientSocket.send(jsonDataHeader.encode('ascii'))
-			print("Sending file: [{}] with size: [{}]".format(dataName, dataSize))
+		if(len(self.requestFileList) != 0):
+			for dataName in self.requestFileList:
+				# Send data header
+				dataSize = os.path.getsize(dataName)
+				dataHeader = (dataName, dataSize)
+				jsonDataHeader = json.dumps(dataHeader)
+				self.clientSocket.send(jsonDataHeader.encode('ascii'))
+				print("Sending file: [{}] with size: [{}]".format(dataName, dataSize))
 
-			# Send real data
-			count = 1
-			fileObject = open(dataName, "rb")
-			data = fileObject.read(self.bufSize)
-			print("Sending the file...")
-			while (data):
-				if(self.clientSocket.send(data)):
-					if(count % 1000 == 0):
-						print(".")
-					count += 1
-					data = fileObject.read(self.bufSize)
-			print("Sending end of file signal")
-			self.clientSocket.send(b'eof')
-			print("Finish sending file!")
+				# Send real data
+				count = 1
+				fileObject = open(dataName, "rb")
+				data = fileObject.read(self.bufSize)
+				print("Sending the file...")
+				while (data):
+					if(self.clientSocket.send(data)):
+						if(count % 1000 == 0):
+							print(".")
+						count += 1
+						data = fileObject.read(self.bufSize)
+				print("Sending end of file signal")
+				self.clientSocket.send(b'eof')
+				print("Finish sending file!")
+		else:
+			print("Synchronization: nothing to send to server!")
+
+		# Synchronization complete
+		print("Synchronization: Congratulations, you are synchronized!")
 
 	# ======================================
 	# Connect and Disconnect function family
@@ -151,7 +166,7 @@ class ClientBox:
 		for fileName in glob.glob("*"):
 			inputItem = (fileName , os.path.getmtime(fileName))
 			self.fileList.append(inputItem)
-		#print(self.fileList)
+		print("File list construction complete!")
 
 	def updateFileList(self):
 		self.constructFileList()
