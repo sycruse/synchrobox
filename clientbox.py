@@ -17,11 +17,10 @@ class ClientBox:
 		self.targetDir			= sys.argv[1]
 		os.chdir(self.targetDir)
 
-		#self.connectToServer()
-
+		self.constructFileList()
 		print("Finish initialize client!")
-		#self.sendFile('data.png')
-		#self.printAllFileName()
+
+		#self.connectToServer()
 		self.sendAllFile()
 
 	def connectToServer(self):
@@ -67,10 +66,16 @@ class ClientBox:
 		print("Closing the client socket...")
 		self.clientSocket.close()
 
-	def printAllFileName(self):
-		print("Printing all file..")
-		for file in glob.glob("*"):
-			print(file)
+	def constructFileList(self):
+		self.fileList = []
+		print("Listing all file in directory..")
+		for fileName in glob.glob("*"):
+			inputItem = (fileName , os.path.getmtime(fileName))
+			self.fileList.append(inputItem)
+		#print(self.fileList)
+
+	def updateFileList(self):
+		self.constructFileList()
 
 def main():
 	client = ClientBox()

@@ -4,6 +4,7 @@ from socket import *
 import sys
 import os
 import glob
+import threading
 
 class ServerBox:
 	def __init__(self, **kwargs):
@@ -47,7 +48,19 @@ class ServerBox:
 				self.connection.close()
 			print("Download finished!")
 			self.fileObject.close()
+		threading.Thread.__init__(self)
 		self.connection.close()
+
+	def constructFileList(self):
+		self.fileList = []
+		print("Listing all file in directory..")
+		for fileName in glob.glob("*"):
+			inputItem = (fileName , os.path.getmtime(fileName))
+			self.fileList.append(inputItem)
+		#print(self.fileList)
+
+	def updateFileList(self):
+		self.constructFileList()
 
 def main():
 	server = ServerBox()
