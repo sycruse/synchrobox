@@ -7,13 +7,15 @@ import sys
 import os
 import glob
 import json
+import time
 
 class ClientBox:
 	def __init__(self, **kwargs):
+		print("Welcome to Synchrobox!")
 		print("Initialize client...")
-		self.host 				= gethostname() #"localhost"
+		self.host 				= sys.argv[2] #gethostname() #"localhost"
 		self.port 				= 1237
-		self.bufSize			= 1024
+		self.bufSize			= 4096
 		self.address			= (self.host, self.port)
 		
 		print("Changing directory to: {}".format(sys.argv[1]))
@@ -21,7 +23,6 @@ class ClientBox:
 		os.chdir(self.targetDir)
 
 		print("Finish initialize client!")
-		self.connectToServer()
 
 		self.mainProcedure()
 
@@ -29,10 +30,21 @@ class ClientBox:
 	# Main procedure to be repeated
 	# =============================
 	def mainProcedure(self):
+		self.connectToServer()
 		self.constructFileList()
 		self.sendFileList()
 		self.receiveRequestList()
+		self.disconnectFromServer()
 		self.exchangingFiles()
+		while True:
+			print("Wait for 5 second to begin next synchronization...")
+			time.sleep(5)
+			self.connectToServer()
+			self.constructFileList()
+			self.sendFileList()
+			self.receiveRequestList()
+			self.disconnectFromServer()
+			self.exchangingFiles()
 
 	# ======================
 	# Synchronization family
@@ -40,14 +52,14 @@ class ClientBox:
 	def sendFileList(self):
 		print("Prepare to send encoded data of client file list..")
 		encodedData = json.dumps(self.fileList)
-		self.clientSocket.sendto(encodedData.encode('ascii'),self.address)
+		self.clientSocket.sendto(encodedData.encode(),self.address)
 		print("Client file list sent!")
-		print(self.address)
+		#print(self.address)
 
 	def receiveRequestList(self):
 		print("Wait to receive data from server: request for client file list..")
 		data = self.clientSocket.recv(self.bufSize)
-		(self.requestFileList, self.incomingFileNumber) = json.loads(data.decode('ascii'))
+		(self.requestFileList, self.incomingFileNumber) = json.loads(data.decode())
 		print("Request file to send to server: {}".format(self.requestFileList))
 		print("Incoming file number from server: {}".format(self.incomingFileNumber))
 
@@ -55,10 +67,20 @@ class ClientBox:
 		print("Synchronization: receiving files from server..")
 		if(self.incomingFileNumber != 0):
 			for index in range(0, self.incomingFileNumber):
+				# Reconnect to server
+				self.connectToServer()
+
 				# Get data header
-				jsonDataHeader = self.clientSocket.recv(self.bufSize).decode('ascii')
-				(dataName,dataSize) = json.loads(jsonDataHeader)
-				print("Receiving file: [{}] with size: [{}]".format(dataName, dataSize))
+				jsonDataHeader = self.clientSocket.recv(self.bufSize)
+				#print("Catch jsonDataHeader: {}".format(jsonDataHeader))
+				decodedJsonDataHeader = jsonDataHeader.decode()
+				(dataName, dataSize, dataActime, dataModtime) = json.loads(decodedJsonDataHeader)
+				print("Receiving file: [{}] with size: [{}], actime: [{}], modtime: [{}]".format(dataName, dataSize, dataActime, dataModtime))
+
+				# Send confirmation code:
+				confirmationCode = 'readycode'.encode()
+				self.clientSocket.send(confirmationCode)
+				print("Confirmation code sent!")
 
 				# Get real data
 				fileObject = open(dataName, 'wb')
@@ -66,29 +88,45 @@ class ClientBox:
 				#calcDataSize += len(data)
 				print("Downloading file...")
 				try:
+					#eofCatched = False
 					while(data):
 						fileObject.write(data)
 						self.clientSocket.settimeout(2)
 						data = self.clientSocket.recv(self.bufSize)
-						if(data == b'eof'):
-							print("End of file catched!")
-							break
+						#if(data == b'eof'):
+						#	print("End of file catched!")
+						#	eofCatched = True						
 				except timeout:
 					fileObject.close()
-				print("Download finished!")
+					print("Download finished through timeout!")
+
+				# Closing file to save
 				fileObject.close()
+				print("Download finished!")
+
+				# Disconnect from server
+				self.disconnectFromServer()
 		else:
 			print("Synchronization: nothing to receive from server!")
 
 		print("Synchronization: sending files to server..")
 		if(len(self.requestFileList) != 0):
 			for dataName in self.requestFileList:
+				# Reconnect to server
+				self.connectToServer()
+
 				# Send data header
 				dataSize = os.path.getsize(dataName)
-				dataHeader = (dataName, dataSize)
+				dataModtime = os.path.getmtime(dataName)
+				dataActime = os.path.getatime(dataName)
+				dataHeader = (dataName, dataSize, dataActime, dataModtime)
 				jsonDataHeader = json.dumps(dataHeader)
-				self.clientSocket.send(jsonDataHeader.encode('ascii'))
-				print("Sending file: [{}] with size: [{}]".format(dataName, dataSize))
+				self.clientSocket.send(jsonDataHeader.encode())
+				print("Sending file: [{}] with size: [{}], actime: [{}], modtime: [{}]".format(dataName, dataSize, dataActime, dataModtime))
+
+				# Wait for confirmation:
+				confirmationCode = self.clientSocket.recv(self.bufSize).decode()
+				print("Confirmation code: {}".format(confirmationCode))
 
 				# Send real data
 				count = 1
@@ -101,8 +139,12 @@ class ClientBox:
 							print(".")
 						count += 1
 						data = fileObject.read(self.bufSize)
-				print("Sending end of file signal")
-				self.clientSocket.send(b'eof')
+				#print("Sending end of file signal")
+				#self.clientSocket.send(b'eof')
+
+				# Disconnect to client as signal of end of file
+				print("Disconnect to client as signal of end of file")
+				self.disconnectFromServer()
 				print("Finish sending file!")
 		else:
 			print("Synchronization: nothing to send to server!")
@@ -121,12 +163,15 @@ class ClientBox:
 	def disconnectFromServer(self):
 		self.clientSocket.close()
 
+	# ===============
+	# Unused function
+	# ===============
 	def sendAllFile(self):
 		print("Prepare to send file...")
 		for file in glob.glob("*"):
 			self.connectToServer()
 			self.fileName		= file
-			self.clientSocket.sendto(self.fileName.encode('ascii'), self.address)
+			self.clientSocket.sendto(self.fileName.encode(), self.address)
 			self.fileObject		= open(self.fileName, "rb")
 			count				= 1
 
@@ -146,7 +191,7 @@ class ClientBox:
 	def sendFile(self, inputFileName):
 		print("Prepare to send file...")
 		self.fileName		= inputFileName
-		self.clientSocket.sendto(self.fileName.encode('ascii'), self.address)
+		self.clientSocket.sendto(self.fileName.encode(), self.address)
 		self.fileObject		= open(self.fileName, "rb")
 		self.data 			= self.fileObject.read(self.bufSize)
 		count				= 1
